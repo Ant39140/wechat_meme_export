@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wechat-meme-export"
+version = "0.1.0"
+description = "Export custom WeChat stickers from a local Windows WeChat 4.x profile."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+  { name = "wechat-meme-export contributors" }
+]
+keywords = ["wechat", "stickers", "export", "windows"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: Microsoft :: Windows",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Utilities",
+]
+dependencies = [
+  "cryptography>=41",
+  "Pillow>=10",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[project.scripts]
+wechat-meme-export = "wechat_meme_export.cli:main"
+wechat-meme-export-gui = "wechat_meme_export.gui:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

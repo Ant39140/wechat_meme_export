@@ -1,0 +1,23 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.tmp_pytest/
+.tmp_pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Local exports and sensitive WeChat data
+exports/
+images/
+*.db
+*.db-shm
+*.db-wal
+*.csv
+*.key
+*.log
