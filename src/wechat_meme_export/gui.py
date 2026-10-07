@@ -609,14 +609,14 @@ class MainApp(tk.Tk):
         try:
             results = scan_database_keys(self.selected_db_path)
             all_keys = set()
-            for pid, keys in results.items():
-                all_keys.update(keys)
+            for pid, scan in results.items():
+                all_keys.update(scan.keys)
             
             if all_keys:
                 key = sorted(all_keys)[0]
                 self.after(0, lambda: self.on_scan_success(key))
             else:
-                self.after(0, self.on_scan_fail)
+                self.after(0, lambda: self.on_scan_fail(results))
         except Exception as e:
             self.after(0, lambda: self.on_scan_error(str(e)))
 
@@ -629,12 +629,27 @@ class MainApp(tk.Tk):
         self.status_lbl.config(text="密钥获取成功")
         messagebox.showinfo("成功", "已成功搜寻并填入进程对应的解密 Key！")
 
-    def on_scan_fail(self):
+    def on_scan_fail(self, results):
         self.progress.stop()
         self.progress.config(mode="determinate", value=0)
         self.btn_scan.config(state="normal")
         self.status_lbl.config(text="未能找到密钥。")
-        messagebox.showwarning("提示", "未找到对应的表情密钥。\n请确认：\n1. 微信 (Win 4.x) 客户端正在运行且已成功登录\n2. 若微信在管理员权限下运行，此脚本也需使用管理员权限运行\n3.如果问题仍然存在，可以彻底退出微信登录并清理后台后重新进入微信。")
+        if not results:
+            detail = "未检测到 Weixin.exe 进程，请先启动微信并登录。"
+        elif all(scan.open_error is not None for scan in results.values()):
+            detail = "无法打开微信进程。请确认本工具与微信以相同权限级别运行；如果微信以管理员身份启动，本工具也需要管理员权限。"
+        elif not any(scan.bytes_read for scan in results.values()):
+            detail = "没有读取到进程内存。请确认微信仍在运行，并检查 Python 与微信的位数是否一致（通常都应为 64 位）。"
+        elif any(scan.config_adapter for scan in results.values()):
+            if any(scan.config_salt_matches for scan in results.values()):
+                detail = "已识别微信版本专用的 Config.Cipher 配置，并找到与所选数据库 salt 相同的记录，但第一页 HMAC 校验未通过。可能是当前数据库页格式与适配参数不同。"
+            else:
+                detail = "已识别微信版本专用的 Config.Cipher 适配器，但没有取得与所选数据库 salt 匹配且通过校验的记录。请确认数据库属于当前登录账号，并在微信中打开表情数据后重新扫描。"
+        elif not any(scan.candidates_tested for scan in results.values()):
+            detail = "已读取微信进程内存，但没有找到十六进制密钥候选。此微信版本可能以其他格式保存密钥。"
+        else:
+            detail = "找到了密钥候选，但都无法解密所选数据库。请确认数据库属于当前登录账号，并重新选择数据库后扫描。"
+        messagebox.showwarning("提示", detail)
 
     def on_scan_error(self, err):
         self.progress.stop()
