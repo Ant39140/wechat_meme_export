@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
 import sqlite3
 from pathlib import Path
 
@@ -32,12 +33,42 @@ def cmd_scan_key(args: argparse.Namespace) -> int:
 
     results = scan_database_keys(db_path, max_region_mb=args.max_region_mb)
     all_keys: set[str] = set()
-    for pid, keys in results.items():
-        print(f"pid={pid} matching_keys={len(keys)}")
-        all_keys.update(keys)
+    for pid, scan in results.items():
+        if scan.open_error is not None:
+            detail = ctypes.FormatError(scan.open_error).strip()
+            print(f"pid={pid} status=open_failed winerror={scan.open_error} detail={detail}")
+            continue
+        print(
+            f"pid={pid} matching_keys={len(scan.keys)} "
+            f"version={scan.weixin_version or 'unknown'} "
+            f"config_adapter={scan.config_adapter or 'legacy-hex-scan'} "
+            f"config_marker={int(scan.config_marker_found)} config_pairs={scan.config_pairs} "
+            f"salt_matches={scan.config_salt_matches} exact_scan_bytes={scan.exact_scan_bytes} "
+            f"regions={scan.queried_regions} committed_regions={scan.committed_regions} "
+            f"bytes_read={scan.bytes_read} failed_reads={scan.failed_reads} "
+            f"candidates_tested={scan.candidates_tested} "
+            f"reserve_sizes={','.join(map(str, sorted(scan.reserve_sizes)))}"
+        )
+        all_keys.update(scan.keys)
     for key in sorted(all_keys):
         print(key)
     print(f"total={len(all_keys)}")
+    if not all_keys:
+        if not results:
+            print("hint=no Weixin.exe process was found; start Weixin and log in before scanning")
+        elif all(scan.open_error is not None for scan in results.values()):
+            print("hint=unable to open Weixin processes; run this command with the same Windows privilege level as Weixin.exe")
+        elif not any(scan.bytes_read for scan in results.values()):
+            print("hint=no process memory was read; check process access and use 64-bit Python with 64-bit Weixin")
+        elif any(scan.config_adapter for scan in results.values()):
+            if any(scan.config_salt_matches for scan in results.values()):
+                print("hint=Config.Cipher contained the selected database salt, but its first-page HMAC did not validate; check the database page format or adapter parameters")
+            else:
+                print("hint=the versioned Config.Cipher adapter was selected but found no validated record for this database salt; check config_pairs and confirm the selected database and active Weixin account")
+        elif not any(scan.candidates_tested for scan in results.values()):
+            print("hint=memory was read but no hexadecimal key candidates were found; this Weixin build may store the key in another format")
+        else:
+            print("hint=key candidates were found but did not decrypt this database page; confirm the selected database and active Weixin account")
     return 0 if all_keys else 2
 
 

@@ -81,6 +81,10 @@ wechat-meme-export discover
 wechat-meme-export scan-key --db-index 1
 ```
 
+如果扫描结果为 `total=0`，请确认微信已登录且正在使用对应账号，并确保命令行与微信以相同权限级别运行。若输出显示 `open_failed`，通常是权限不足；若 `bytes_read=0`，请检查 Python 与微信的位数是否一致（Windows 微信 4.x 通常需要 64 位 Python）。`candidates_tested=0` 表示当前微信版本的密钥内存格式尚未被扫描器识别；若候选数大于 0 但没有匹配密钥，请确认选中的数据库属于当前账号，或该版本使用了不同的密钥派生方式。
+
+Weixin 4.1.13.12、4.1.13.65 和 4.1.15.13 使用按数据库保存的 `Config.Cipher` key/salt 记录。扫描器对这些版本按目标数据库 salt 精确匹配配置记录，并通过第一页 HMAC 校验 key；4.1.13.65 的适配参考了 [key-discovery.md](https://github.com/DLBorjigin/zanmenliaotian-ai-exporter/blob/main/skill/wechat-chat-export/references/key-discovery.md) 和 [key_probe.py](https://github.com/DLBorjigin/zanmenliaotian-ai-exporter/blob/main/src/wechat_ai_exporter/key_probe.py)。`config_pairs=0` 表示尚未定位到配置节点；`salt_matches>0` 但 `total=0` 表示记录中的 salt 与所选数据库一致，但第一页 HMAC 校验未通过。
+
 **解密并一键导出**：
 
 ```powershell
