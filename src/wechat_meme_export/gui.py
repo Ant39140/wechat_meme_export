@@ -29,7 +29,7 @@ UI_SUCCESS_FONT = ("Microsoft YaHei UI", 12, "bold")
 MONOSPACE_FONT = ("Consolas", 10)
 
 from .decrypt import decrypt_database
-from .discovery import discover_emoticon_databases
+from .discovery import WeChatDatabase, discover_emoticon_databases
 from .exporter import export_custom_stickers, write_index
 from .memory import scan_database_keys
 from .stickers import load_stickers
@@ -513,6 +513,7 @@ class MainApp(tk.Tk):
         self.db_combo.pack(side="left", fill="x", expand=True, padx=(0, 5))
         self.db_combo.bind("<<ComboboxSelected>>", self.on_db_selected)
         
+        ttk.Button(db_select_frame, text="手动选择...", command=self.browse_db).pack(side="right", padx=(5, 0))
         ttk.Button(db_select_frame, text="刷新列表", command=self.refresh_db_list).pack(side="right")
         
         self.db_info_lbl = ttk.Label(db_group, text="正在搜索本地微信表情数据库...", foreground="gray")
@@ -566,16 +567,47 @@ class MainApp(tk.Tk):
         except Exception:
             self.db_candidates = []
 
+        self._update_db_combo_display()
+
+    def _update_db_combo_display(self, select_index: int = 0):
         if self.db_candidates:
-            vals = [f"{i+1}. {item.path.parent.parent.name} ({item.size // 1024} KB)" for i, item in enumerate(self.db_candidates)]
+            vals = [f"{i+1}. {item.account_dir.name} ({item.size // 1024} KB)" for i, item in enumerate(self.db_candidates)]
             self.db_combo.config(values=vals)
-            self.db_combo.current(0)
+            self.db_combo.current(min(max(0, select_index), len(vals) - 1))
             self.on_db_selected(None)
         else:
             self.db_combo.config(values=["未检测到数据库"])
             self.db_combo.set("未检测到数据库")
-            self.db_info_lbl.config(text="无法定位默认微信目录，请手动运行微信 4.x 并保持其处于活跃状态。")
+            self.db_info_lbl.config(text="无法定位默认微信目录，请确保微信 4.x 已登录，或点击“手动选择...”指定 emoticon.db。")
             self.selected_db_path = None
+
+    def browse_db(self):
+        file_path = filedialog.askopenfilename(
+            title="选择微信表情数据库 (emoticon.db)",
+            filetypes=[("微信表情数据库", "emoticon.db *.db"), ("所有文件", "*.*")],
+        )
+        if not file_path:
+            return
+        chosen = Path(file_path)
+        discovered = discover_emoticon_databases([chosen])
+        if not discovered:
+            try:
+                stat = chosen.stat()
+            except OSError as exc:
+                messagebox.showerror("错误", f"无法读取所选数据库文件:\n{exc}")
+                return
+            account_dir = chosen.parents[2] if len(chosen.parents) >= 3 else chosen.parent
+            discovered = [WeChatDatabase(path=chosen, account_dir=account_dir, modified_at=stat.st_mtime, size=stat.st_size)]
+
+        target = discovered[0]
+        existing_idx = next(
+            (i for i, item in enumerate(self.db_candidates) if os.path.normcase(str(item.path)) == os.path.normcase(str(target.path))),
+            None,
+        )
+        if existing_idx is None:
+            self.db_candidates.insert(0, target)
+            existing_idx = 0
+        self._update_db_combo_display(select_index=existing_idx)
 
     def on_db_selected(self, event):
         idx = self.db_combo.current()
@@ -583,10 +615,9 @@ class MainApp(tk.Tk):
             db = self.db_candidates[idx]
             self.selected_db_path = db.path
             mtime_str = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(db.modified_at))
-            self.db_info_lbl.config(text=f"路径: {db.path.name} | 修改时间: {mtime_str} | 大小: {db.size // 1024} KB")
+            self.db_info_lbl.config(text=f"路径: {db.path} | 修改时间: {mtime_str} | 大小: {db.size // 1024} KB")
         else:
             self.selected_db_path = None
-
     def browse_output(self):
         dir_path = filedialog.askdirectory(initialdir=self.out_entry.get())
         if dir_path:

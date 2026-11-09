@@ -118,7 +118,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     discover = subparsers.add_parser("discover", help="list discovered WeChat emoticon.db files")
-    discover.add_argument("--wechat-root", help="xwechat_files directory; defaults to %%USERPROFILE%%\\Documents\\xwechat_files")
+    discover.add_argument("--wechat-root", help="xwechat_files directory, account directory, or emoticon.db path")
     discover.set_defaults(func=cmd_discover)
 
     scan = subparsers.add_parser("scan-key", help="scan running Weixin.exe processes for the target emoticon.db key")

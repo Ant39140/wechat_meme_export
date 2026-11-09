@@ -4,8 +4,8 @@
 
 ## 功能特点
 
-- **自动定位**：自动检索 `%USERPROFILE%\Documents\xwechat_files` 路径下的表情数据库。
-- **密钥获取**：通过扫描运行中的 `Weixin.exe` 进程内存，自动获取 `emoticon.db` 的解密密钥。
+- **自动定位**：自动从微信 4.x 配置文件（`%APPDATA%\Tencent\xwechat\config`）、系统“文档”目录、多盘符常见路径及运行中 `Weixin.exe` 进程定位 `xwechat_files` 下的表情数据库，并支持在 GUI 中手动选择 `emoticon.db`。
+- **密钥获取**：通过扫描运行中的 `Weixin.exe` 进程内存（支持 Weixin 4.x `Config.Cipher` 配置节点解析及内存特征扫描），自动获取 `emoticon.db` 的解密密钥。
 - **数据库解密**：支持解密 Windows 微信 4.x 的 `db_storage/emoticon/emoticon.db` 数据库。
 - **数据导出**：从 `kNonStoreEmoticonTable` 表中导出自定义/收藏的表情。
 - **索引生成**：生成 `added_stickers_index.csv`，详细记录导出状态、本地文件路径及原始 CDN URL。
@@ -83,7 +83,7 @@ wechat-meme-export scan-key --db-index 1
 
 如果扫描结果为 `total=0`，请确认微信已登录且正在使用对应账号，并确保命令行与微信以相同权限级别运行。若输出显示 `open_failed`，通常是权限不足；若 `bytes_read=0`，请检查 Python 与微信的位数是否一致（Windows 微信 4.x 通常需要 64 位 Python）。`candidates_tested=0` 表示当前微信版本的密钥内存格式尚未被扫描器识别；若候选数大于 0 但没有匹配密钥，请确认选中的数据库属于当前账号，或该版本使用了不同的密钥派生方式。
 
-Weixin 4.1.13.12、4.1.13.65 和 4.1.15.13 使用按数据库保存的 `Config.Cipher` key/salt 记录。扫描器对这些版本按目标数据库 salt 精确匹配配置记录，并通过第一页 HMAC 校验 key；4.1.13.65 的适配参考了 [key-discovery.md](https://github.com/DLBorjigin/zanmenliaotian-ai-exporter/blob/main/skill/wechat-chat-export/references/key-discovery.md) 和 [key_probe.py](https://github.com/DLBorjigin/zanmenliaotian-ai-exporter/blob/main/src/wechat_ai_exporter/key_probe.py)。`config_pairs=0` 表示尚未定位到配置节点；`salt_matches>0` 但 `total=0` 表示记录中的 salt 与所选数据库一致，但第一页 HMAC 校验未通过。
+Weixin 4.1.13.x（含 4.1.13.12、4.1.13.48、4.1.13.65）、4.1.15.x 及 4.2.x 使用按数据库保存的 `Config.Cipher` key/salt 记录。扫描器对包含 `com.Tencent.WCDB.Config.Cipher` 节点的版本按目标数据库 salt 精确匹配配置记录，并通过第一页 HMAC 校验 key；`Config.Cipher` 适配参考了 [key-discovery.md](https://github.com/DLBorjigin/zanmenliaotian-ai-exporter/blob/main/skill/wechat-chat-export/references/key-discovery.md) 和 [key_probe.py](https://github.com/DLBorjigin/zanmenliaotian-ai-exporter/blob/main/src/wechat_ai_exporter/key_probe.py)。`config_pairs=0` 表示尚未定位到配置节点；`salt_matches>0` 但 `total=0` 表示记录中的 salt 与所选数据库一致，但第一页 HMAC 校验未通过。
 
 **解密并一键导出**：
 

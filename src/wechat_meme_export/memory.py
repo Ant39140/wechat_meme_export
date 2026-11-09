@@ -98,8 +98,22 @@ def version_from_module_path(path: Path) -> tuple[int, int, int, int] | None:
         if re.fullmatch(r"\d+\.\d+\.\d+\.\d+", part):
             values = tuple(int(value) for value in part.split("."))
             return values[0], values[1], values[2], values[3]
+    if platform.system() == "Windows" and hasattr(ctypes, "windll") and path.is_file():
+        try:
+            size = ctypes.windll.version.GetFileVersionInfoSizeW(str(path), None)
+            if size:
+                buffer = ctypes.create_string_buffer(size)
+                if ctypes.windll.version.GetFileVersionInfoW(str(path), 0, size, buffer):
+                    value = ctypes.c_void_p()
+                    length = wintypes.UINT()
+                    if ctypes.windll.version.VerQueryValueW(
+                        buffer, "\\", ctypes.byref(value), ctypes.byref(length)
+                    ):
+                        ms, ls = struct.unpack_from("<II", ctypes.string_at(value.value, 16), 8)
+                        return (ms >> 16, ms & 0xFFFF, ls >> 16, ls & 0xFFFF)
+        except (AttributeError, OSError, ValueError):
+            pass
     return None
-
 
 def require_windows() -> None:
     if platform.system() != "Windows":
@@ -274,13 +288,8 @@ class ProcessMemoryReader:
             return False
         base, module_size, dll_path = module
         version = version_from_module_path(dll_path)
-        if version is None:
-            return False
-        result.weixin_version = ".".join(map(str, version))
-        adapter = EXACT_SALT_ADAPTERS.get(version)
-        if adapter is None:
-            return False
-        result.config_adapter = adapter
+        if version is not None:
+            result.weixin_version = ".".join(map(str, version))
         if time.monotonic() > deadline or not 0 < module_size <= MAX_WEIXIN_DLL_SIZE:
             return False
 
@@ -293,6 +302,11 @@ class ProcessMemoryReader:
         if marker_offset < 0:
             return False
         result.config_marker_found = True
+        result.config_adapter = EXACT_SALT_ADAPTERS.get(version) or (
+            f"weixin-{result.weixin_version}-exact-salt-config"
+            if result.weixin_version
+            else "weixin-exact-salt-config"
+        )
         marker_address = base + marker_offset
         needle = struct.pack("<QQ", marker_address, len(EXACT_SALT_CONFIG_MARKER))
 
@@ -329,23 +343,29 @@ class ProcessMemoryReader:
                 value ^ CONFIG_CIPHER_XOR_MASK[index % len(CONFIG_CIPHER_XOR_MASK)]
                 for index, value in enumerate(blob)
             )
-            for match in re.finditer(
-                rb"[xX]'([0-9a-fA-F]{64})([0-9a-fA-F]{32})'", decoded
-            ):
-                candidate_salt = bytes.fromhex(match.group(2).decode("ascii"))
-                if candidate_salt != salt:
-                    continue
-                result.config_salt_matches += 1
-                candidate = bytes.fromhex(match.group(1).decode("ascii"))
-                key_hex = candidate.hex()
-                if key_hex in tested:
-                    continue
-                tested.add(key_hex)
-                result.candidates_tested += 1
-                if verify_first_page(first_page, candidate):
-                    result.keys.add(key_hex)
-                    result.reserve_sizes.add(RESERVE)
-                    return True
+            for variant in (decoded, blob):
+                for match in re.finditer(
+                    rb"[xX]'([0-9a-fA-F]{64})([0-9a-fA-F]{32})'", variant
+                ):
+                    candidate_salt = bytes.fromhex(match.group(2).decode("ascii"))
+                    if candidate_salt != salt:
+                        continue
+                    result.config_salt_matches += 1
+                    candidate = bytes.fromhex(match.group(1).decode("ascii"))
+                    key_hex = candidate.hex()
+                    if key_hex in tested:
+                        continue
+                    tested.add(key_hex)
+                    result.candidates_tested += 1
+                    if verify_first_page(first_page, candidate):
+                        result.keys.add(key_hex)
+                        result.reserve_sizes.add(RESERVE)
+                        return True
+                    reserve = detect_page_reserve(first_page, candidate)
+                    if reserve is not None:
+                        result.keys.add(key_hex)
+                        result.reserve_sizes.add(reserve)
+                        return True
         return False
 
     def scan_pid_for_db_key(
@@ -434,9 +454,14 @@ def scan_database_keys(db_path: Path, max_region_mb: int = 8) -> dict[int, Proce
     reader = ProcessMemoryReader()
     results: dict[int, ProcessScan] = {}
     exact_deadline = time.monotonic() + EXACT_SCAN_SECONDS
-    for pid in get_weixin_pids():
+    pids = get_weixin_pids()
+    pids_with_dll = [pid for pid in pids if reader.get_weixin_module(pid) is not None]
+    ordered_pids = pids_with_dll + [pid for pid in pids if pid not in pids_with_dll]
+    for pid in ordered_pids:
         result = reader.scan_pid_for_db_key(
             pid, first_page, max_region_mb, exact_deadline=exact_deadline
         )
         results[pid] = result
+        if result.keys:
+            break
     return results
